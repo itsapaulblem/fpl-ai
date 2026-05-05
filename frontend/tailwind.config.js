@@ -5,23 +5,23 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Chelsea palette — based on official #034694 royal blue
-        bg: "#04122e",
-        panel: "#0a1d44",
-        panel2: "#0e2654",
-        border: "#1b3470",
-        muted: "#8aa0c8",
-        text: "#eef2ff",
-        accent: "#3da5ff",       // bright cyan-blue (link / CTA)
-        accent2: "#ffd24a",       // Chelsea gold for highlights
+        // Football pitch palette — dark turf greens with gold accents
+        bg: "#071c12",
+        panel: "#0c2818",
+        panel2: "#103020",
+        border: "#1b5030",
+        muted: "#6aaa84",
+        text: "#eef8ef",
+        accent: "#22c55e",        // bright grass green (link / CTA)
+        accent2: "#ffd24a",        // trophy gold for highlights
         warn: "#f59e0b",
         danger: "#ef4444",
         gkp: "#facc15",
         def: "#60a5fa",
-        mid: "#34d399",
+        mid: "#86efac",
         fwd: "#f87171",
-        chelsea: "#034694",
-        chelseaDeep: "#021a3a",
+        pitch: "#166534",
+        pitchDeep: "#052e16",
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],

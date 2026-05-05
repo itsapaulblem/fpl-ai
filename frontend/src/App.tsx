@@ -241,7 +241,7 @@ export default function App() {
                     disabled={loadingScores}
                     className="ml-1 h-8 rounded-lg bg-accent px-2.5 text-[11px] font-semibold text-bg hover:bg-accent/80"
                   >
-                    Jump to GW{gw.next}
+                    Jump to Upcoming GW
                   </button>
                 )}
               </div>

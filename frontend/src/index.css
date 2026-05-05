@@ -12,11 +12,19 @@ html, body, #root {
 
 body {
   @apply bg-bg text-text font-sans antialiased;
-  background-color: #04122e;
+  background-color: #071c12;
   background-image:
-    radial-gradient(at 20% 0%, rgba(3, 70, 148, 0.55) 0px, transparent 55%),
-    radial-gradient(at 80% 0%, rgba(61, 165, 255, 0.18) 0px, transparent 50%),
-    radial-gradient(at 50% 100%, rgba(3, 70, 148, 0.35) 0px, transparent 60%);
+    /* subtle pitch stripe bands */
+    repeating-linear-gradient(
+      180deg,
+      transparent,
+      transparent 72px,
+      rgba(255,255,255,0.013) 72px,
+      rgba(255,255,255,0.013) 144px
+    ),
+    radial-gradient(at 20% 0%,  rgba(16, 110, 54, 0.65) 0px, transparent 55%),
+    radial-gradient(at 80% 0%,  rgba(52, 211, 105, 0.18) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(16, 110, 54, 0.40) 0px, transparent 60%);
   background-attachment: fixed;
 }
 
