@@ -38,9 +38,7 @@ class FPLClient:
         self.sleep = sleep_between_calls
         self.timeout = timeout
 
-    # ------------------------------------------------------------------ #
     # Internal
-    # ------------------------------------------------------------------ #
     def _get(self, path: str) -> Any:
         url = f"{BASE_URL}/{path.lstrip('/')}"
         resp = self.session.get(url, timeout=self.timeout)
@@ -49,9 +47,7 @@ class FPLClient:
             time.sleep(self.sleep)  # be polite — avoids rate limiting
         return resp.json()
 
-    # ------------------------------------------------------------------ #
     # Public endpoints
-    # ------------------------------------------------------------------ #
     def bootstrap(self) -> dict:
         """Static season data: ~600 players, 20 teams, 38 GWs, 4 positions."""
         return self._get("bootstrap-static/")
@@ -74,9 +70,7 @@ class FPLClient:
         return self._get(f"entry/{int(team_id)}/event/{int(gameweek)}/picks/")
 
 
-# ---------------------------------------------------------------------- #
 # Module-level helpers (don't need an instance)
-# ---------------------------------------------------------------------- #
 def current_gameweek(bootstrap: dict) -> int:
     """Return the currently-live gameweek id, falling back to the next one
     (preseason) or 1 (everything else failed)."""
