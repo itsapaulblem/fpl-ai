@@ -62,7 +62,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(
-    title="FPL AI",
+    title="Paul's FPL AI Website",
     description="Fantasy Premier League squad recommender + transfer planner.",
     version="0.1.0",
     lifespan=lifespan,
@@ -149,9 +149,20 @@ def health() -> dict:
 @app.get("/gameweek")
 def gameweek() -> dict:
     boot = state.client.bootstrap()
+    cur = current_gameweek(boot)
+    nxt = next_gameweek(boot)
+    # Find the deadline of the next (or current upcoming) gameweek.
+    next_deadline = None
+    target_ev = nxt or cur
+    if target_ev is not None:
+        for ev in boot.get("events", []):
+            if int(ev.get("id", 0)) == int(target_ev):
+                next_deadline = ev.get("deadline_time")
+                break
     return {
-        "current": current_gameweek(boot),
-        "next": next_gameweek(boot),
+        "current": cur,
+        "next": nxt,
+        "next_deadline": next_deadline,  # ISO 8601 UTC, e.g. "2026-05-09T17:30:00Z"
     }
 
 
@@ -221,6 +232,15 @@ def predictions(
 
     preds["last_gw_points"] = preds["player_id"].map(last_points).fillna(0).astype(int)
     preds["last_gw_minutes"] = preds["player_id"].map(last_minutes).fillna(0).astype(int)
+
+    # Attach FPL `code` (used to build photo URLs).
+    photo_codes: dict[int, int] = {}
+    for el in boot.get("elements", []):
+        try:
+            photo_codes[int(el["id"])] = int(el["code"])
+        except (KeyError, TypeError, ValueError):
+            continue
+    preds["photo_code"] = preds["player_id"].map(photo_codes).fillna(0).astype(int)
 
     # Optional name / team filter
     if q:
@@ -338,9 +358,21 @@ def my_team(
     last_transfers = int(eh.get("event_transfers", 0))
     event_points = int(eh.get("points", 0))
     total_points = int(eh.get("total_points", 0))
-    # Public API doesn't expose `free_transfers` directly; estimate from last GW.
-    # FPL rules (current): 1 free per GW, unused rolls over up to a max of 5.
-    free_transfers_est = 2 if last_transfers == 0 else 1
+
+    # Compute free transfers using a simple, conservative heuristic.
+    # FPL public API doesn't expose live FT count, so we estimate from last GW:
+    #   - 0 transfers last GW → user banked 1, so they have 2 FTs now
+    #   - 1+ transfers last GW → they used their FT, so they have 1 FT now
+    # Cap is 5 this season (AFCON exception); usually 2.
+    # Trying to replay full history is unreliable because chip GWs (WC / FH)
+    # make many transfers without consuming stored FTs, and the API doesn't
+    # expose enough info to disambiguate. The user can override the value
+    # via the `free` query param if their app shows something different.
+    FT_CAP = 5  # AFCON exception this season; normally 2.
+    if last_transfers == 0:
+        free_transfers_est = min(2, FT_CAP)
+    else:
+        free_transfers_est = 1
 
     # Adjust bank/value/free transfers for any pending transfers we just applied.
     n_pending = len(pending_transfers)
@@ -357,6 +389,32 @@ def my_team(
     cols = [c for c in ("player_id", "web_name", "team_name", "team_code", "position", "team", "price")
             if c in state.players.columns]
     enriched = picks.merge(state.players[cols], on="player_id", how="left")
+
+    # Attach FPL `code` for player photo URLs.
+    photo_codes: dict[int, int] = {}
+    for el in boot.get("elements", []):
+        try:
+            photo_codes[int(el["id"])] = int(el["code"])
+        except (KeyError, TypeError, ValueError):
+            continue
+    enriched["photo_code"] = enriched["player_id"].map(photo_codes).fillna(0).astype(int)
+
+    # Attach last GW points for each player (so squad chips show recent form).
+    last_points: dict[int, int] = {}
+    last_minutes: dict[int, int] = {}
+    last_gw_for_squad = snapshot_gw if snapshot_gw and snapshot_gw >= 1 else None
+    if last_gw_for_squad:
+        try:
+            live = state.client.event_live(last_gw_for_squad)
+            for el in live.get("elements", []):
+                pid = int(el.get("id", 0))
+                stats = el.get("stats", {}) or {}
+                last_points[pid] = int(stats.get("total_points", 0))
+                last_minutes[pid] = int(stats.get("minutes", 0))
+        except Exception:
+            last_gw_for_squad = None
+    enriched["last_gw_points"] = enriched["player_id"].map(last_points).fillna(0).astype(int)
+    enriched["last_gw_minutes"] = enriched["player_id"].map(last_minutes).fillna(0).astype(int)
 
     # Attach xPoints for target GW
     preds = _predictions_for(target)[["player_id", "xPoints"]]
@@ -415,33 +473,40 @@ def my_team(
     # Suggest the BEST scorer in the XI, not necessarily who they currently captain.
     if remaining["3xc"] > 0:
         switch = best_cap_id != captain_id
-        # If switching armband + TC: total = XI + 2x best_cap (replaces 1x captain bonus).
-        # If keeping armband + TC:   total = XI + 2x current captain (one extra cap multiplier).
-        total_with_chip = (
-            round(xi_xp + 2 * best_cap_xp, 2)
-            if switch
-            else round(base_xp + captain_xp_val, 2)
-        )
-        delta_tc = round(total_with_chip - base_xp, 2)
+        # Math (raw single-count XI sum + captain multiplier):
+        #   - Normal play:  xi_xp + 1*captain_xp  (captain effectively counted 2x)
+        #   - TC play:      xi_xp + 2*captain_xp  (captain effectively counted 3x)
+        # If switching armband to best_cap, use best_cap_xp instead.
+        cap_xp_for_tc = best_cap_xp if switch else captain_xp_val
+        total_with_chip = round(xi_xp + 2 * cap_xp_for_tc, 2)
+        # Delta is vs. the optimal "play normally" baseline. If switching the
+        # armband would itself improve the baseline, compare against THAT, so
+        # the delta only credits the chip itself, not the armband decision.
+        baseline_for_delta = xi_xp + cap_xp_for_tc
+        delta_tc = round(total_with_chip - baseline_for_delta, 2)
         chip_recs.append({
             "chip": "3xc",
             "label": "Triple Captain",
             "xpoints_with_chip": total_with_chip,
             "delta": delta_tc,
-            "recommend": best_cap_xp >= 7.0,
+            "recommend": cap_xp_for_tc >= 7.0,
             "captain_name": best_cap_name,
             "captain_id": best_cap_id,
-            "captain_xpoints": round(best_cap_xp, 2),
+            "captain_xpoints": round(cap_xp_for_tc, 2),
             "captain_team_code": best_cap_team_code,
+            "breakdown": (
+                f"XI sum {xi_xp:.1f} + captain {cap_xp_for_tc:.1f} × 3 "
+                f"(extra +{cap_xp_for_tc:.1f}) = {total_with_chip:.1f} xP"
+            ),
             "note": (
-                f"Switch armband to {best_cap_name} and triple — projected {best_cap_xp:.1f} xP × 3 "
-                f"(currently captaining {cur_cap_name})."
+                f"Switch armband to {best_cap_name} ({cap_xp_for_tc:.1f} xP) and triple. "
+                f"Currently captaining {cur_cap_name}."
                 if switch
-                else f"Triple {best_cap_name} — already your captain, projected {best_cap_xp:.1f} xP × 3."
+                else f"Triple {best_cap_name} ({cap_xp_for_tc:.1f} xP) — already your captain."
             ),
         })
 
-    # Bench Boost: bench points count this week.
+    # Bench Boost: bench points count this week. Captain still doubled.
     if remaining["bboost"] > 0:
         bench_sorted = bench.sort_values("xPoints", ascending=False)
         bench_players = [
@@ -455,13 +520,21 @@ def my_team(
             }
             for r in bench_sorted.itertuples()
         ]
+        # Math:
+        #   - Normal play: xi_xp + captain_xp  (bench scores nothing)
+        #   - BB play:     xi_xp + captain_xp + bench_xp  (bench counts too)
+        bb_total = round(xi_xp + captain_xp_val + bench_xp_val, 2)
         chip_recs.append({
             "chip": "bboost",
             "label": "Bench Boost",
-            "xpoints_with_chip": round(base_xp + bench_xp_val, 2),
+            "xpoints_with_chip": bb_total,
             "delta": round(bench_xp_val, 2),
             "recommend": bench_xp_val >= 12.0,
             "bench_players": bench_players,
+            "breakdown": (
+                f"XI {xi_xp:.1f} + captain bonus {captain_xp_val:.1f} "
+                f"+ bench {bench_xp_val:.1f} = {bb_total:.1f} xP"
+            ),
             "note": f"Adds {bench_xp_val:.1f} xP from your bench this week.",
         })
     # Wildcard / Free Hit: build optimal squad from full pool within current budget.
@@ -565,7 +638,7 @@ def my_team(
         "formation": _formation_str(starting_xi),
         "captain_id": captain_id,
         "vice_captain_id": vice_id,
-        "total_xpoints": round(float(starting_xi["xPoints"].sum()), 2),
+        "total_xpoints": round(float(starting_xi["xPoints"].sum()) + captain_xp_val, 2),
         "starting_xi": _df_to_json(starting_xi),
         "bench": _df_to_json(bench),
         "chips_remaining": remaining,
@@ -580,7 +653,7 @@ def transfers(
     tid: int = Query(..., description="FPL team id."),
     bank: float = Query(default=0.0, ge=0.0, le=20.0),
     free: int = Query(default=1, ge=0, le=5),
-    max_transfers: int = Query(default=2, ge=0, le=2),
+    max_transfers: int = Query(default=2, ge=0, le=5),
     gw: int | None = None,
     top: int = Query(default=5, ge=1, le=20),
 ) -> dict:

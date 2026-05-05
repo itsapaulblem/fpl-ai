@@ -21,25 +21,37 @@ function PlayerChip({
   return (
     <div className="flex w-24 flex-col items-center gap-1 sm:w-28">
       <div className="relative">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-panel2 ring-2 ring-border sm:h-14 sm:w-14">
-          {player.team_code ? (
+        <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-panel2 ring-2 ring-border sm:h-16 sm:w-16">
+          {player.photo_code ? (
             <img
-              src={`https://resources.premierleague.com/premierleague/badges/50/t${player.team_code}.png`}
+              src={`https://resources.premierleague.com/premierleague/photos/players/110x140/p${player.photo_code}.png`}
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = "none";
+              }}
               alt=""
-              className="h-8 w-8 object-contain sm:h-9 sm:w-9"
+              className="h-full w-full object-cover object-top"
               loading="lazy"
             />
           ) : (
             <PositionBadge pos={player.position} className="text-[9px]" />
           )}
         </div>
+        {/* Team badge overlay (bottom-left) */}
+        {player.team_code ? (
+          <img
+            src={`https://resources.premierleague.com/premierleague/badges/50/t${player.team_code}.png`}
+            alt=""
+            loading="lazy"
+            className="absolute -bottom-0.5 -left-0.5 h-5 w-5 rounded-full bg-bg p-0.5 ring-1 ring-border"
+          />
+        ) : null}
         {isCaptain && (
           <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-bg ring-2 ring-bg">
             C
           </span>
         )}
         {isVice && (
-          <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent2 text-[10px] font-bold text-white ring-2 ring-bg">
+          <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent2 text-[10px] font-bold text-bg ring-2 ring-bg">
             V
           </span>
         )}

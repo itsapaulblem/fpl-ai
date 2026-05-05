@@ -52,3 +52,48 @@ body::before {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #1f2a3d; border-radius: 8px; }
 ::-webkit-scrollbar-thumb:hover { background: #2a3855; }
+
+/* High-contrast gameweek slider */
+.gw-slider {
+  background: #ffd24a;
+  outline: none;
+}
+.gw-slider::-webkit-slider-runnable-track {
+  height: 8px;
+  background: #ffd24a;
+  border-radius: 9999px;
+  border: 1px solid rgba(0, 0, 0, 0.4);
+}
+.gw-slider::-moz-range-track {
+  height: 8px;
+  background: #ffd24a;
+  border-radius: 9999px;
+  border: 1px solid rgba(0, 0, 0, 0.4);
+}
+.gw-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px; /* center on 8px track */
+  border-radius: 9999px;
+  background: #0a0a0a;
+  border: 2px solid #ffd24a;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+.gw-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: #0a0a0a;
+  border: 2px solid #ffd24a;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+.gw-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px #22c55e;
+}
+.gw-slider:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px #22c55e;
+}

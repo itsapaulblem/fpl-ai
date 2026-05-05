@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Crown,
   Sparkles,
+  Clock,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -27,7 +28,6 @@ import { PredictionsTable } from "./components/PredictionsTable";
 import { TransferPlanCard } from "./components/TransferPlanCard";
 
 const DEFAULT_TEAM_ID = 271610;
-const MAX_TRANSFERS = 2;
 
 export default function App() {
   // Team id input — type freely, applies on submit.
@@ -46,6 +46,8 @@ export default function App() {
   const [playerQuery, setPlayerQuery] = useState("");
   const [loadingTeam, setLoadingTeam] = useState(false);
   const [loadingTransfers, setLoadingTransfers] = useState(false);
+  const [allowHit, setAllowHit] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
 
   // Initial load — gameweek + live scores + top picks (don't depend on team id)
@@ -145,14 +147,11 @@ export default function App() {
     setError(null);
     setLoadingTransfers(true);
     try {
+      const ft = team.free_transfers_estimate;
+      // If hits are allowed, search up to FT + 3 (so user sees up to a -12 plan); otherwise cap at FT.
+      const maxT = Math.min(5, Math.max(1, allowHit ? ft + 3 : ft));
       setTransfers(
-        await api.transfers(
-          teamId,
-          team.bank,
-          team.free_transfers_estimate,
-          MAX_TRANSFERS,
-          5,
-        ),
+        await api.transfers(teamId, team.bank, ft, maxT, 5),
       );
     } catch (e) {
       setError(String(e));
@@ -207,31 +206,29 @@ export default function App() {
                 : "Upcoming fixtures"
             }
             right={
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() =>
-                    setScoresGw((g) => Math.max(1, (g ?? gw?.next ?? 1) - 1))
-                  }
-                  disabled={
-                    loadingScores || (scores?.gameweek ?? scoresGw ?? 1) <= 1
-                  }
+                  onClick={() => {
+                    const cur = scores?.gameweek ?? scoresGw ?? gw?.next ?? 1;
+                    setScoresGw(Math.max(1, cur - 1));
+                  }}
+                  disabled={loadingScores || (scores?.gameweek ?? scoresGw ?? 1) <= 1}
                   aria-label="Previous gameweek"
-                  className="grid h-8 w-8 place-items-center rounded-lg bg-panel2 ring-1 ring-border hover:bg-panel2/70 disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-panel2 text-text ring-1 ring-border hover:bg-panel2/70 disabled:opacity-40"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
-                <span className="min-w-[3.5rem] text-center text-xs font-semibold text-text">
+                <span className="min-w-[3.5rem] rounded-lg bg-panel2 px-2 py-1 text-center text-xs font-semibold text-text ring-1 ring-border">
                   GW{scores?.gameweek ?? scoresGw ?? "—"}
                 </span>
                 <button
-                  onClick={() =>
-                    setScoresGw((g) => Math.min(38, (g ?? gw?.next ?? 1) + 1))
-                  }
-                  disabled={
-                    loadingScores || (scores?.gameweek ?? scoresGw ?? 38) >= 38
-                  }
+                  onClick={() => {
+                    const cur = scores?.gameweek ?? scoresGw ?? gw?.next ?? 1;
+                    setScoresGw(Math.min(38, cur + 1));
+                  }}
+                  disabled={loadingScores || (scores?.gameweek ?? scoresGw ?? 38) >= 38}
                   aria-label="Next gameweek"
-                  className="grid h-8 w-8 place-items-center rounded-lg bg-panel2 ring-1 ring-border hover:bg-panel2/70 disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-panel2 text-text ring-1 ring-border hover:bg-panel2/70 disabled:opacity-40"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>
@@ -239,9 +236,9 @@ export default function App() {
                   <button
                     onClick={() => setScoresGw(gw.next!)}
                     disabled={loadingScores}
-                    className="ml-1 h-8 rounded-lg bg-accent px-2.5 text-[11px] font-semibold text-bg hover:bg-accent/80"
+                    className="h-8 rounded-lg bg-accent px-2.5 text-[11px] font-semibold text-bg hover:bg-accent/80"
                   >
-                    Jump to Upcoming GW
+                    Head to GW{gw.next}
                   </button>
                 )}
               </div>
@@ -272,7 +269,7 @@ export default function App() {
               }
               subtitle={
                 team
-                  ? `Value £${team.squad_value.toFixed(1)}m · Bank £${team.bank.toFixed(1)}m · GW${team.snapshot_gameweek} points: ${team.event_points} · xP for GW${team.target_gameweek}: ${team.total_xpoints.toFixed(2)}`
+                  ? `Value £${team.squad_value.toFixed(1)}m · Bank £${team.bank.toFixed(1)}m`
                   : "Live FPL squad for this manager"
               }
             />
@@ -281,6 +278,27 @@ export default function App() {
                 <Skeleton lines={10} />
               ) : (
                 <>
+                  {/* Headline stats: last GW points + xP for upcoming GW */}
+                  <div className="mb-4 grid grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-panel2 p-3 ring-1 ring-border">
+                      <p className="text-[11px] uppercase tracking-wider text-muted">
+                        GW{team.snapshot_gameweek} points
+                      </p>
+                      <p className="mt-1 text-3xl font-bold text-text sm:text-4xl">
+                        {team.event_points}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-muted">last gameweek</p>
+                    </div>
+                    <div className="rounded-xl bg-accent/10 p-3 ring-1 ring-accent/40">
+                      <p className="text-[11px] uppercase tracking-wider text-accent">
+                        xP for GW{team.target_gameweek}
+                      </p>
+                      <p className="mt-1 text-3xl font-bold text-accent sm:text-4xl">
+                        {team.total_xpoints.toFixed(1)}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-muted">expected this gameweek</p>
+                    </div>
+                  </div>
                   <Pitch
                     startingXi={team.starting_xi}
                     bench={team.bench}
@@ -306,6 +324,7 @@ export default function App() {
               }
             />
             <CardBody className="space-y-4">
+              {gw?.next_deadline && <DeadlineBanner deadline={gw.next_deadline} gw={gw.next} />}
               <div className="grid grid-cols-2 gap-3">
                 <ReadOnlyField
                   label="Bank £m"
@@ -314,13 +333,20 @@ export default function App() {
                 <ReadOnlyField
                   label="Free transfers"
                   value={team ? String(team.free_transfers_estimate) : "—"}
-                  hint={
-                    team
-                      ? `Made ${team.last_event_transfers} last GW`
-                      : undefined
-                  }
                 />
               </div>
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg bg-panel2 px-3 py-2 ring-1 ring-border">
+                <input
+                  type="checkbox"
+                  checked={allowHit}
+                  onChange={(e) => setAllowHit(e.target.checked)}
+                  className="h-4 w-4 rounded accent-accent"
+                />
+                <span className="text-sm text-text">
+                  Allow hit transfers
+                  <span className="ml-1.5 rounded bg-warn/15 px-1.5 py-0.5 text-[11px] text-warn">-4 pts each hit!</span>
+                </span>
+              </label>
               <button
                 onClick={fetchTransfers}
                 disabled={loadingTransfers || !team}
@@ -356,7 +382,10 @@ export default function App() {
                       Possible transfers
                     </p>
                     <div className="space-y-2">
-                      {transfers.alternatives.slice(0, 5).map((p, i) => (
+                      {transfers.alternatives
+                        .filter((p) => allowHit || p.hit_cost === 0)
+                        .slice(0, 5)
+                        .map((p, i) => (
                         <TransferPlanCard
                           key={i}
                           plan={p}
@@ -364,6 +393,21 @@ export default function App() {
                           index={i}
                         />
                       ))}
+                      {transfers.alternatives.filter((p) => allowHit || p.hit_cost === 0).length === 0 && (
+                        <div className="flex items-start gap-3 rounded-xl bg-warn/10 p-4 ring-1 ring-warn/40">
+                          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warn" />
+                          <div>
+                            <p className="text-sm font-semibold text-warn">
+                              No free transfer improvements found
+                            </p>
+                            <p className="mt-1 text-xs text-muted">
+                              Your squad is already well-optimised for this gameweek.
+                              {!allowHit && " Tick \"Allow hit transfers\" above to see options that cost −4 pts."}
+                              {allowHit && " No transfers (free or hit) were found that improve your predicted score."}
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -504,7 +548,7 @@ function Header({
           type="submit"
           className="h-10 rounded-xl bg-accent px-4 text-sm font-semibold text-bg shadow-md shadow-accent/20 transition hover:bg-accent/80"
         >
-          Load Team
+          Search Team
         </button>
       </form>
     </header>
@@ -614,14 +658,21 @@ function ChipRecommendations({ team }: { team: MyTeamResponse }) {
             >
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-semibold">{r.label}</p>
-                <p className="text-xs text-accent">
-                  {r.xpoints_with_chip.toFixed(1)} xP
-                  <span className="ml-1 text-muted">
-                    (+{r.delta.toFixed(1)})
-                  </span>
+                <p className="text-sm font-bold text-accent2">
+                  +{r.delta.toFixed(1)} xP bonus
                 </p>
               </div>
-              {r.chip !== "bboost" && (
+              {r.chip === "3xc" && r.captain_name && (
+                <p className="mt-0.5 text-[11px] text-muted">
+                  if you captain <span className="font-semibold text-text">{r.captain_name}</span>
+                </p>
+              )}
+              {r.chip === "bboost" && (
+                <p className="mt-0.5 text-[11px] text-muted">
+                  from your bench scoring this gameweek
+                </p>
+              )}
+              {r.chip !== "bboost" && r.chip !== "3xc" && (
                 <p className="mt-0.5 text-[11px] text-muted">{r.note}</p>
               )}
 
@@ -902,6 +953,68 @@ function ReadOnlyField({
       <p className="text-[10px] uppercase tracking-wider text-muted">{label}</p>
       <p className="text-sm font-semibold tabular-nums">{value}</p>
       {hint && <p className="text-[10px] text-muted">{hint}</p>}
+    </div>
+  );
+}
+
+function DeadlineBanner({ deadline, gw }: { deadline: string; gw: number | null }) {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => force((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const target = new Date(deadline).getTime();
+  const now = Date.now();
+  const diff = target - now;
+  const past = diff <= 0;
+
+  let countdown = "";
+  if (!past) {
+    const days = Math.floor(diff / 86_400_000);
+    const hours = Math.floor((diff % 86_400_000) / 3_600_000);
+    const mins = Math.floor((diff % 3_600_000) / 60_000);
+    if (days > 0) countdown = `${days}d ${hours}h ${mins}m`;
+    else if (hours > 0) countdown = `${hours}h ${mins}m`;
+    else countdown = `${mins}m`;
+  }
+
+  const local = new Date(deadline).toLocaleString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const urgent = !past && diff < 6 * 3_600_000;
+
+  return (
+    <div
+      className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ring-1 ${
+        past
+          ? "bg-danger/10 ring-danger/30"
+          : urgent
+            ? "bg-warn/15 ring-warn/40"
+            : "bg-accent/10 ring-accent/30"
+      }`}
+    >
+      <Clock
+        className={`h-4 w-4 shrink-0 ${past ? "text-danger" : urgent ? "text-warn" : "text-accent"}`}
+      />
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] uppercase tracking-wider text-muted">
+          GW{gw ?? "—"} deadline
+        </p>
+        <p className="text-sm font-semibold text-text">{local}</p>
+      </div>
+      <span
+        className={`shrink-0 text-sm font-bold tabular-nums ${
+          past ? "text-danger" : urgent ? "text-warn" : "text-accent"
+        }`}
+      >
+        {past ? "Closed" : countdown}
+      </span>
     </div>
   );
 }

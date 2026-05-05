@@ -19,8 +19,8 @@ export function TransferPlanCard({
         <span className="text-[11px] uppercase tracking-wider text-muted">
           Option {index + 1} · {plan.n_transfers} transfer{plan.n_transfers === 1 ? "" : "s"}
           {plan.hit_cost > 0 && (
-            <span className="ml-2 rounded bg-warn/15 px-1.5 py-0.5 text-warn">
-              -{plan.hit_cost} hit
+            <span className="ml-2 rounded bg-warn/20 px-2 py-0.5 text-xs font-bold text-warn ring-1 ring-warn/40">
+              −{plan.hit_cost} pts hit
             </span>
           )}
         </span>

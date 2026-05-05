@@ -8,6 +8,7 @@ export type Health = {
 export type GameweekInfo = {
   current: number | null;
   next: number | null;
+  next_deadline: string | null;
 };
 
 export type LiveFixture = {
@@ -39,6 +40,8 @@ export type PlayerPrediction = {
   team_name: string;
   position: Position;
   team: number;
+  team_code?: number;
+  photo_code?: number;
   price: number;
   n_fixtures: number;
   is_home: number;
@@ -60,9 +63,12 @@ export type SquadPlayer = {
   web_name: string;
   team_name: string;
   team_code?: number;
+  photo_code?: number;
   position: Position;
   price: number;
   xPoints: number;
+  last_gw_points?: number;
+  last_gw_minutes?: number;
 };
 
 export type SquadResponse = {
@@ -115,6 +121,7 @@ export type ChipRecommendation = {
   delta: number;
   recommend: boolean;
   note: string;
+  breakdown?: string;
   captain_name?: string;
   captain_id?: number;
   captain_xpoints?: number;

@@ -267,6 +267,65 @@ def plan_transfers(
             seen[key] = p
     unique_plans = sorted(seen.values(), key=lambda p: p.net_xpoints, reverse=True)
 
+    # ---- 3-5 transfer search (greedy iterative on top of best 2-transfer) ----
+    # For N > 2 we greedily extend the best plan found so far by applying
+    # one more 1-transfer swap at a time. This is fast and finds good
+    # (though not provably optimal) solutions.
+    if max_transfers >= 3:
+        for n_total in range(3, max_transfers + 1):
+            # Seed from the best (n_total-1)-transfer plan, or baseline if none.
+            candidates_prev = [p for p in unique_plans if p.n_transfers == n_total - 1]
+            seed = candidates_prev[0] if candidates_prev else baseline
+
+            current_ids_seed = set(int(p) for p in seed.new_squad["player_id"])
+            pool_seed = _candidate_pool(seed.new_squad, current_ids_seed, pool_size=pool_size)
+
+            for _, out_row in seed.new_squad.iterrows():
+                out_pos = out_row["position"]
+                out_id = int(out_row["player_id"])
+                out_sell = float(out_row.get("selling_price", out_row.get("price", 0)))
+                out_xp = float(out_row["xPoints"])
+                budget = seed.bank_after + out_sell
+
+                cands = pool_seed[
+                    (pool_seed["position"] == out_pos) &
+                    (pool_seed["price"] <= budget) &
+                    (pool_seed["xPoints"] > out_xp)
+                ]
+                for _, in_row in cands.iterrows():
+                    in_id = int(in_row["player_id"])
+                    if in_id in {int(p) for p in seed.new_squad["player_id"]}:
+                        continue
+                    new_squad = pd.concat([
+                        seed.new_squad[seed.new_squad["player_id"] != out_id],
+                        _row_to_squad_format(in_row, in_id),
+                    ], ignore_index=True)
+                    if not _is_legal(new_squad, max_per_club):
+                        continue
+                    xi_xp, xi, form, cap = _evaluate_squad(new_squad)
+                    hit = HIT_COST * max(0, n_total - free_transfers)
+                    net = xi_xp - hit
+                    if net <= base_xp:
+                        continue
+                    out_ids = list(seed.transfers_out) + [out_id]
+                    in_ids = list(seed.transfers_in) + [in_id]
+                    plans.append(TransferPlan(
+                        transfers_out=out_ids, transfers_in=in_ids,
+                        n_transfers=n_total, hit_cost=hit,
+                        xi_xpoints=xi_xp, net_xpoints=net,
+                        bank_after=budget - float(in_row["price"]),
+                        new_squad=new_squad, new_xi=xi,
+                        formation=form, captain_id=cap,
+                    ))
+
+        # Re-dedup including new greedy plans
+        seen = {}
+        for p in plans:
+            key = (tuple(sorted(p.transfers_out)), tuple(sorted(p.transfers_in)))
+            if key not in seen or p.net_xpoints > seen[key].net_xpoints:
+                seen[key] = p
+        unique_plans = sorted(seen.values(), key=lambda p: p.net_xpoints, reverse=True)
+
     return TransferReport(baseline=baseline, plans=unique_plans[:20])
 
 
