@@ -242,7 +242,7 @@ def predict_next_gw(
     )
 
     # Only re-merge display columns the merged frame doesn't already have.
-    display_cols = ["web_name", "team_name", "position", "price"]
+    display_cols = ["web_name", "team_name", "team_code", "position", "price"]
     add_cols = [c for c in display_cols if c in players.columns and c not in merged.columns]
     if add_cols:
         merged = merged.merge(
@@ -250,7 +250,7 @@ def predict_next_gw(
         )
 
     # Double-gameweeks produce one row per fixture — sum xPoints into one row per player.
-    group_cols = [c for c in ("player_id", "web_name", "team_name", "position", "price", "team")
+    group_cols = [c for c in ("player_id", "web_name", "team_name", "team_code", "position", "price", "team")
                   if c in merged.columns]
     agg = (
         merged.groupby(group_cols, as_index=False)
@@ -260,7 +260,7 @@ def predict_next_gw(
              n_fixtures=("xPoints", "size"))
     )
 
-    cols = ["player_id", "web_name", "team_name", "position", "team", "price",
+    cols = ["player_id", "web_name", "team_name", "team_code", "position", "team", "price",
             "n_fixtures", "is_home", "opp_strength", "xPoints"]
     cols = [c for c in cols if c in agg.columns]
     return agg[cols].sort_values("xPoints", ascending=False).reset_index(drop=True)

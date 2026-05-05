@@ -69,6 +69,24 @@ class FPLClient:
         """The 15 players a manager fielded in a given gameweek."""
         return self._get(f"entry/{int(team_id)}/event/{int(gameweek)}/picks/")
 
+    def manager_transfers(self, team_id: int) -> list[dict]:
+        """All transfers a manager has made this season (one row per transfer).
+
+        Each row has `element_in`, `element_out`, `event` (the GW the transfer
+        applies to), `time`, plus the buy/sell prices in tenths of £m.
+        Pending transfers for the upcoming GW appear here as soon as they are
+        confirmed in the FPL UI — *before* the deadline for that GW passes."""
+        return self._get(f"entry/{int(team_id)}/transfers/")
+
+    def manager_history(self, team_id: int) -> dict:
+        """Per-GW results, past seasons, and `chips` already used this season."""
+        return self._get(f"entry/{int(team_id)}/history/")
+
+    def event_live(self, gw: int) -> dict:
+        """Live/realised stats for every player in the given gameweek.
+        Returns `{elements: [{id, stats: {total_points, minutes, ...}}]}`."""
+        return self._get(f"event/{int(gw)}/live/")
+
 
 # Module-level helpers (don't need an instance)
 def current_gameweek(bootstrap: dict) -> int:

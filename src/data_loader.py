@@ -43,11 +43,11 @@ def players_frame(bootstrap: dict) -> pd.DataFrame:
     team / position names.
     """
     teams = pd.DataFrame(bootstrap["teams"])[[
-        "id", "name", "short_name", "strength",
+        "id", "code", "name", "short_name", "strength",
         "strength_overall_home", "strength_overall_away",
         "strength_attack_home", "strength_attack_away",
         "strength_defence_home", "strength_defence_away",
-    ]].rename(columns={"id": "team", "name": "team_name"})
+    ]].rename(columns={"id": "team", "name": "team_name", "code": "team_code"})
 
     positions = pd.DataFrame(bootstrap["element_types"])[[
         "id", "singular_name_short",

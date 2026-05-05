@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  @apply bg-bg text-text font-sans antialiased;
+  background-color: #04122e;
+  background-image:
+    radial-gradient(at 20% 0%, rgba(3, 70, 148, 0.55) 0px, transparent 55%),
+    radial-gradient(at 80% 0%, rgba(61, 165, 255, 0.18) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(3, 70, 148, 0.35) 0px, transparent 60%);
+  background-attachment: fixed;
+}
+
+/* Chelsea lion watermark behind the page */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: url("/lion.svg");
+  background-repeat: no-repeat;
+  background-position: center 65%;
+  background-size: min(80vh, 720px);
+  opacity: 0.06;
+  color: #3da5ff;
+  pointer-events: none;
+  z-index: 0;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1f2a3d; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #2a3855; }

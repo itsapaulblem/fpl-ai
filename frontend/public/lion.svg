@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="currentColor">
+  <!-- Stylised rampant lion silhouette inspired by the Chelsea crest. Hand-drawn paths, not a copy of the official crest. -->
+  <g>
+    <path d="M40 160 C 40 120, 60 100, 80 95 L 80 80 C 70 80, 60 70, 60 55 C 60 40, 75 30, 90 35 L 100 25 L 110 20 L 115 30 L 130 25 L 135 40 L 145 45 L 148 60 L 142 70 L 150 80 L 148 95 L 140 100 L 145 115 L 135 125 L 140 140 L 130 145 L 132 160 L 120 160 L 118 145 L 105 150 L 100 160 L 90 158 L 88 145 L 75 150 L 70 160 Z"/>
+    <!-- Mane spikes -->
+    <path d="M70 60 L 65 50 L 75 55 Z"/>
+    <path d="M85 45 L 82 32 L 92 42 Z"/>
+    <path d="M100 35 L 102 22 L 110 35 Z"/>
+    <path d="M118 38 L 122 25 L 128 38 Z"/>
+    <!-- Tail curl -->
+    <path d="M140 130 C 155 125, 165 135, 160 150 C 158 158, 150 160, 145 152" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+    <!-- Staff (held vertically) -->
+    <rect x="103" y="40" width="3" height="120"/>
+    <circle cx="104.5" cy="38" r="4"/>
+  </g>
+</svg>
