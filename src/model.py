@@ -231,8 +231,7 @@ def predict_next_gw(
            .rename(columns={"team": "opponent", "strength": "opp_strength"}))
     fx = fx.merge(opp, on="opponent", how="left")
 
-    fx_keep = ["player_id", "is_home", "opp_strength"]
-    fx_keep = [c for c in fx_keep if c in fx.columns]
+    fx_keep = [c for c in ("player_id", "is_home", "opp_strength") if c in fx.columns]
     merged = latest.merge(fx[fx_keep], on="player_id", how="inner")
     if merged.empty:
         return merged
@@ -242,19 +241,29 @@ def predict_next_gw(
         X, num_iteration=bundle.model.best_iteration
     )
 
-    display = ["player_id"]
-    for c in ("web_name", "team_name", "position", "price"):
-        if c in players.columns and c not in merged.columns:
-            display.append(c)
-    out = merged.merge(
-        players[[c for c in ["player_id", "web_name", "team_name", "position", "price"]
-                 if c in players.columns]],
-        on="player_id", how="left",
+    # Only re-merge display columns the merged frame doesn't already have.
+    display_cols = ["web_name", "team_name", "position", "price"]
+    add_cols = [c for c in display_cols if c in players.columns and c not in merged.columns]
+    if add_cols:
+        merged = merged.merge(
+            players[["player_id", *add_cols]], on="player_id", how="left"
+        )
+
+    # Double-gameweeks produce one row per fixture — sum xPoints into one row per player.
+    group_cols = [c for c in ("player_id", "web_name", "team_name", "position", "price", "team")
+                  if c in merged.columns]
+    agg = (
+        merged.groupby(group_cols, as_index=False)
+        .agg(xPoints=("xPoints", "sum"),
+             is_home=("is_home", "max"),
+             opp_strength=("opp_strength", "mean"),
+             n_fixtures=("xPoints", "size"))
     )
-    cols = ["player_id", "web_name", "team_name", "position", "price",
-            "is_home", "opp_strength", "xPoints"]
-    cols = [c for c in cols if c in out.columns]
-    return out[cols].sort_values("xPoints", ascending=False).reset_index(drop=True)
+
+    cols = ["player_id", "web_name", "team_name", "position", "team", "price",
+            "n_fixtures", "is_home", "opp_strength", "xPoints"]
+    cols = [c for c in cols if c in agg.columns]
+    return agg[cols].sort_values("xPoints", ascending=False).reset_index(drop=True)
 
 
 __all__ = [
