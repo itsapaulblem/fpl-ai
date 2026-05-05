@@ -1,0 +1,23 @@
+# Byte-compiled
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Data & models (regenerable)
+data/raw/
+data/processed/
+data/*.parquet
+data/*.csv
+models/*.pkl
+models/*.txt
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
