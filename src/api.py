@@ -19,10 +19,13 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+import os
 
 import pandas as pd
+import requests
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from .data_loader import build_training_set, load_or_fetch
 from .fpl_api import FPLClient, current_gameweek, next_gameweek
@@ -717,3 +720,103 @@ def transfers(
         "best_is_no_transfer": best is report.baseline,
         "alternatives": [serialize(p) for p in report.plans[:top]],
     }
+
+
+
+# ---------------------------------------------------------------------- #
+# /chat — Liam Rosenior persona chatbot, powered by Gemini 2.0 Flash.
+# ---------------------------------------------------------------------- #
+GEMINI_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/"
+    "models/gemini-flash-lite-latest:generateContent"
+)
+
+ROSENIOR_SYSTEM_PROMPT = """You are Liam Rosenior, the English football manager (formerly head coach of Hull City and currently with Strasbourg). You are chatting with a Fantasy Premier League (FPL) manager inside a web app called "Paul's FPL AI Website".
+
+Personality and voice:
+- Warm, thoughtful, articulate. You speak in measured, modern coaching language with a clear love of the game.
+- You're famously progressive tactically — you talk about pressing triggers, build-up phases, transitions, half-spaces, overloads, and player profiles.
+- You're British — use natural British English ("brilliant", "mate", "the lads", "form's been mint").
+- You're not arrogant; you give credit to other coaches and players.
+
+Your role here:
+- Help the user think through FPL decisions: captain picks, transfers, differentials, fixture difficulty, chip strategy.
+- Talk about real Premier League players, tactics, and form when relevant.
+- Be concise — 2-5 short paragraphs max, often less. The user is on a small chat panel, not reading an essay.
+- If asked something completely off-topic (politics, personal life, etc.), gently steer back to football.
+- Never claim to have real-time data you don't have. If asked about live odds or stats, say you're going off general form and tactical read.
+
+Always reply in character as Liam Rosenior. Do not break character. Do not mention that you are an AI."""
+
+
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    messages: list[ChatMessage]
+
+
+@app.post("/chat")
+def chat(req: ChatRequest) -> dict:
+    """Forward a chat history to Gemini with the Liam Rosenior persona."""
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="GEMINI_API_KEY is not set on the server.",
+        )
+    if not req.messages:
+        raise HTTPException(status_code=400, detail="messages must not be empty")
+
+    # Convert chat history to Gemini contents schema.
+    contents: list[dict] = []
+    for m in req.messages:
+        role = "user" if m.role == "user" else "model"
+        text = (m.content or "").strip()
+        if not text:
+            continue
+        contents.append({"role": role, "parts": [{"text": text}]})
+    if not contents:
+        raise HTTPException(status_code=400, detail="no non-empty messages")
+
+    payload = {
+        "system_instruction": {"parts": [{"text": ROSENIOR_SYSTEM_PROMPT}]},
+        "contents": contents,
+        "generationConfig": {
+            "temperature": 0.85,
+            "topP": 0.95,
+            "maxOutputTokens": 600,
+        },
+    }
+    try:
+        resp = requests.post(
+            GEMINI_URL,
+            params={"key": api_key},
+            json=payload,
+            timeout=30,
+        )
+    except requests.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Gemini request failed: {e}")
+
+    if resp.status_code != 200:
+        if resp.status_code == 429:
+            raise HTTPException(
+                status_code=429,
+                detail="Liam's catching his breath — Gemini rate limit hit. Try again in a minute.",
+            )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Gemini error {resp.status_code}: {resp.text[:300]}",
+        )
+
+    data = resp.json()
+    try:
+        reply = data["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError, TypeError):
+        raise HTTPException(
+            status_code=502,
+            detail=f"Unexpected Gemini response: {str(data)[:300]}",
+        )
+    return {"reply": reply.strip()}

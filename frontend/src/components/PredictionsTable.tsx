@@ -58,7 +58,7 @@ export function PredictionsTable({
   }
 
   if (!rows.length)
-    return <p className="text-sm text-muted">No predictions available.</p>;
+    return <p className="text-sm text-muted">No players match your search.</p>;
 
   const max = Math.max(...sorted.map((r) => r.xPoints));
   const showLast = !!lastGw;
