@@ -7,7 +7,7 @@ __pycache__/
 # Virtual env
 .venv/
 venv/
-env/
+.env/
 
 # Data & models (regenerable, keep repo small)
 data/raw/
