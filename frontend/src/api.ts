@@ -1,4 +1,6 @@
 import type {
+  ChatMessage,
+  ChatResponse,
   GameweekInfo,
   Health,
   LiveScoresResponse,
@@ -12,6 +14,19 @@ const BASE = (import.meta.env.VITE_API_BASE as string) || "http://127.0.0.1:8000
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`API ${path} ${res.status}: ${text}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`API ${path} ${res.status}: ${text}`);
@@ -44,4 +59,6 @@ export const api = {
       `/transfers?tid=${tid}&bank=${bank}&free=${free}` +
         `&max_transfers=${maxTransfers}&top=${top}${gw ? `&gw=${gw}` : ""}`,
     ),
+  chat: (messages: ChatMessage[]) =>
+    post<ChatResponse>("/chat", { messages }),
 };

@@ -16,6 +16,7 @@ services:
     restart: unless-stopped
     environment:
       - FPL_AI_CORS_ORIGINS=*
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     expose:
       - "8000"
     ports:

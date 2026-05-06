@@ -7,10 +7,11 @@ export default {
       colors: {
         // Football pitch palette — dark turf greens with gold accents
         bg: "#071c12",
-        panel: "#0c2818",
-        panel2: "#103020",
-        border: "#1b5030",
-        muted: "#6aaa84",
+        // Cards: near-black with a faint green tint so they pop against the green pitch background.
+        panel: "#0a0f0c",
+        panel2: "#141b16",
+        border: "#243b2c",
+        muted: "#7fb89a",
         text: "#eef8ef",
         accent: "#22c55e",        // bright grass green (link / CTA)
         accent2: "#ffd24a",        // trophy gold for highlights

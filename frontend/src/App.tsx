@@ -23,9 +23,29 @@ import type {
 } from "./types";
 
 import { Card, CardBody, CardHeader } from "./components/Card";
+
+function SoccerBallIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <polygon points="12,7 16.5,10.2 14.8,15.4 9.2,15.4 7.5,10.2" fill="currentColor" stroke="none" />
+      <path d="M12 2 L12 7 M2 12 L7.5 10.2 M22 12 L16.5 10.2 M5 19 L9.2 15.4 M19 19 L14.8 15.4" />
+    </svg>
+  );
+}
 import { Pitch } from "./components/Pitch";
 import { PredictionsTable } from "./components/PredictionsTable";
 import { TransferPlanCard } from "./components/TransferPlanCard";
+import { RoseniorChat } from "./components/RoseniorChat";
 
 const DEFAULT_TEAM_ID = 271610;
 
@@ -169,6 +189,8 @@ export default function App() {
         activeId={teamId}
       />
 
+      <RoseniorChat />
+
       {error && (
         <div className="mb-4 flex items-start gap-2 rounded-xl bg-danger/10 p-3 ring-1 ring-danger/30">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
@@ -184,7 +206,7 @@ export default function App() {
           <CardHeader
             title={
               <span className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-accent" />
+                <SoccerBallIcon className="h-4 w-4 text-accent" />
                 {(() => {
                   const shown = scores?.gameweek ?? scoresGw ?? gw?.next ?? null;
                   const next = gw?.next ?? null;
@@ -416,10 +438,7 @@ export default function App() {
               {!transfers && !loadingTransfers && (
                 <div className="flex items-start gap-2 rounded-lg bg-panel2/50 p-3 text-xs text-muted ring-1 ring-border">
                   <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
-                  <span>
-                    Bank and free transfers are pulled live. Click recommend to
-                    see the best swap options.
-                  </span>
+                  <span>Click recommend to see the best swap options.</span>
                 </div>
               )}
             </CardBody>
@@ -508,12 +527,17 @@ function Header({
   return (
     <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-chelsea ring-1 ring-accent/40">
-          <span className="text-lg">⚽</span>
+        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-white ring-1 ring-accent/40">
+          <img
+            src="https://upload.wikimedia.org/wikipedia/en/f/f2/Premier_League_Logo.svg"
+            alt="Premier League"
+            className="h-9 w-9 object-contain"
+            loading="lazy"
+          />
         </div>
         <div>
           <h1 className="text-lg font-semibold tracking-tight">
-            FPL <span className="text-accent">AI</span>
+            Paul's Fantasy Premier League <span className="text-accent">AI</span> Website
           </h1>
           <p className="text-xs text-muted">
             Manager #{activeId} · Weekly Recommendations

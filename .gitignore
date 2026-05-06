@@ -6,8 +6,12 @@ __pycache__/
 
 # Virtual env
 .venv/
+<<<<<<< HEAD
+.venv/
+=======
 venv/
-env/
+>>>>>>> 15209ce3456e8acdd3bd6078a50bd6502e12cdf7
+.env/
 
 # Data & models (regenerable, keep repo small)
 data/raw/
@@ -24,3 +28,4 @@ models/
 .vscode/
 .idea/
 .DS_Store
+".env" 
