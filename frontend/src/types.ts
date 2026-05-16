@@ -191,3 +191,83 @@ export type ChatMessage = {
 export type ChatResponse = {
   reply: string;
 };
+
+// ----- Leagues -----
+export type ManagerLeague = {
+  id: number;
+  name: string;
+  short_name: string | null;
+  entry_rank: number | null;
+  entry_last_rank: number | null;
+  league_type: string;
+  is_invitational: boolean;
+};
+
+export type ManagerLeaguesResponse = {
+  manager_id: number;
+  manager_name: string;
+  team_name: string;
+  leagues: ManagerLeague[];
+};
+
+export type LeagueStandingRow = {
+  entry_id: number;
+  entry_name: string;
+  player_name: string;
+  rank: number;
+  last_rank?: number | null;
+  rank_sort?: number | null;
+  total: number;
+  event_total: number;
+  predicted_xpoints: number | null;
+  is_me: boolean;
+};
+
+export type LeagueResponse = {
+  league_id: number;
+  league_name: string;
+  league_admin_entry?: number | null;
+  snapshot_gameweek: number;
+  target_gameweek: number;
+  average_predicted_xpoints: number | null;
+  standings: LeagueStandingRow[];
+  you: LeagueStandingRow | null;
+  has_next: boolean;
+};
+
+export type RivalSquadPlayer = {
+  player_id: number;
+  web_name: string;
+  team_name: string;
+  team_code: number;
+  position: string;
+  price: number;
+  xPoints: number;
+  squad_slot?: number;
+  is_captain?: boolean;
+  is_vice_captain?: boolean;
+};
+
+export type RivalSwapSuggestion = RivalSquadPlayer & { xp_gain: number };
+
+export type RivalWeakness = {
+  weak_player: RivalSquadPlayer;
+  reason: string;
+  suggested_replacements: RivalSwapSuggestion[];
+};
+
+export type RivalManagerResponse = {
+  league_id: number;
+  manager_id: number;
+  entry_name: string;
+  player_name: string;
+  snapshot_gameweek: number;
+  target_gameweek: number;
+  captain_id: number;
+  vice_captain_id: number;
+  xi_xpoints: number;
+  total_xpoints: number;
+  starting_xi: RivalSquadPlayer[];
+  bench: RivalSquadPlayer[];
+  weaknesses: RivalWeakness[];
+};

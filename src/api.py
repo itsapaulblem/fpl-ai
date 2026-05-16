@@ -23,7 +23,7 @@ import os
 
 import pandas as pd
 import requests
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -92,7 +92,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_allow_origins,
     allow_origin_regex=".*" if "*" in _extra else None,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -722,6 +722,300 @@ def transfers(
     }
 
 
+# ---------------------------------------------------------------------- #
+# /league — classic mini-league standings + rival squad analysis.
+# ---------------------------------------------------------------------- #
+def _team_code_map() -> dict[int, int]:
+    return {
+        int(t["id"]): int(t["code"])
+        for t in state.client.bootstrap().get("teams", [])
+    }
+
+
+@app.get("/manager/{tid}/leagues")
+def manager_leagues(
+    tid: int = Path(..., description="FPL manager (entry) id."),
+) -> dict:
+    """Return the classic mini-leagues the manager belongs to, so the UI can
+    auto-populate the league picker without asking for league ids."""
+    try:
+        entry = state.client.manager_entry(int(tid))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(404, f"Could not fetch manager {tid}: {e}") from e
+
+    classic = (entry.get("leagues", {}) or {}).get("classic", []) or []
+    leagues = []
+    for lg in classic:
+        # Only show real mini-leagues (skip "Overall", country/region leagues
+        # that are huge and not interesting for head-to-head scouting).
+        scoring = (lg.get("scoring") or "").lower()
+        league_type = (lg.get("league_type") or "").lower()  # "x" = invitational, "s" = system
+        if scoring != "c":  # classic only (skip head-to-head etc.)
+            continue
+        leagues.append({
+            "id": int(lg["id"]),
+            "name": str(lg.get("name") or f"League {lg['id']}"),
+            "short_name": lg.get("short_name"),
+            "entry_rank": lg.get("entry_rank"),
+            "entry_last_rank": lg.get("entry_last_rank"),
+            "league_type": league_type,
+            "is_invitational": league_type == "x",
+        })
+
+    # Sort: invitational mini-leagues first (those are the ones users actually
+    # care about), then by rank ascending.
+    leagues.sort(key=lambda l: (not l["is_invitational"], l["entry_rank"] or 10**9))
+
+    return {
+        "manager_id": int(tid),
+        "manager_name": (
+            f"{entry.get('player_first_name', '')} "
+            f"{entry.get('player_last_name', '')}"
+        ).strip(),
+        "team_name": entry.get("name") or "",
+        "leagues": leagues,
+    }
+
+
+def _fetch_manager_xi(manager_id: int, gw: int) -> pd.DataFrame:
+    """Return a manager's starting XI (squad_slot 1-11) merged with player meta
+    and xPoints for `gw`. Empty DataFrame on failure."""
+    try:
+        payload = state.client.manager_picks(manager_id, gw)
+    except Exception:
+        return pd.DataFrame()
+    picks = pd.DataFrame(payload.get("picks", [])).rename(
+        columns={"element": "player_id", "position": "squad_slot"}
+    )
+    if picks.empty:
+        return picks
+    cols = [c for c in ("player_id", "web_name", "team_name", "team_code",
+                        "position", "team", "price")
+            if c in state.players.columns]
+    enriched = picks.merge(state.players[cols], on="player_id", how="left")
+    preds = _predictions_for(gw)[["player_id", "xPoints"]]
+    enriched = enriched.merge(preds, on="player_id", how="left")
+    enriched["xPoints"] = enriched["xPoints"].fillna(0.0)
+    return enriched
+
+
+@app.get("/league/{league_id}")
+def league_standings(
+    league_id: int = Path(..., description="FPL classic league id."),
+    tid: int | None = Query(default=None, description="Highlight this manager's row."),
+    gw: int | None = None,
+    enrich_top: int = Query(default=20, ge=0, le=50,
+                            description="How many top managers to enrich with predicted xP."),
+) -> dict:
+    """Return the classic-league standings, with each top-N manager's
+    predicted starting-XI xPoints for the upcoming gameweek."""
+    boot = state.client.bootstrap()
+    snapshot_gw = current_gameweek(boot)
+    target = _resolve_gw(gw)
+
+    try:
+        data = state.client.classic_league_standings(int(league_id))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(404, f"Could not fetch league {league_id}: {e}") from e
+
+    league_meta = data.get("league", {}) or {}
+    results = (data.get("standings", {}) or {}).get("results", []) or []
+
+    # Enrich the top-N entries with predicted XI xPoints for `target`.
+    enriched: list[dict] = []
+    for i, row in enumerate(results):
+        entry_id = int(row.get("entry", 0))
+        is_me = tid is not None and entry_id == int(tid)
+        rec = {
+            "entry_id": entry_id,
+            "entry_name": row.get("entry_name") or "",
+            "player_name": row.get("player_name") or "",
+            "rank": int(row.get("rank") or (i + 1)),
+            "last_rank": row.get("last_rank"),
+            "rank_sort": row.get("rank_sort"),
+            "total": int(row.get("total") or 0),
+            "event_total": int(row.get("event_total") or 0),
+            "predicted_xpoints": None,
+            "is_me": is_me,
+        }
+        # Always enrich the user's own row, plus the first `enrich_top` rivals.
+        if is_me or (i < enrich_top and entry_id):
+            xi = _fetch_manager_xi(entry_id, snapshot_gw)
+            if not xi.empty:
+                starters = xi[xi["squad_slot"] <= 11]
+                rec["predicted_xpoints"] = round(float(starters["xPoints"].sum()), 2)
+        enriched.append(rec)
+
+    # If `tid` was provided but isn't in the top-N, find them in full standings
+    # and append a "you are here" marker (still without enrichment).
+    me = next((e for e in enriched if e["is_me"]), None)
+    if tid and not me:
+        for i, row in enumerate(results):
+            if int(row.get("entry", 0)) == int(tid):
+                xi = _fetch_manager_xi(int(tid), snapshot_gw)
+                pred_xp = None
+                if not xi.empty:
+                    starters = xi[xi["squad_slot"] <= 11]
+                    pred_xp = round(float(starters["xPoints"].sum()), 2)
+                me = {
+                    "entry_id": int(tid),
+                    "entry_name": row.get("entry_name") or "",
+                    "player_name": row.get("player_name") or "",
+                    "rank": int(row.get("rank") or (i + 1)),
+                    "last_rank": row.get("last_rank"),
+                    "total": int(row.get("total") or 0),
+                    "event_total": int(row.get("event_total") or 0),
+                    "predicted_xpoints": pred_xp,
+                    "is_me": True,
+                }
+                break
+
+    avg_xp = None
+    xps = [e["predicted_xpoints"] for e in enriched if e["predicted_xpoints"] is not None]
+    if xps:
+        avg_xp = round(sum(xps) / len(xps), 2)
+
+    return {
+        "league_id": int(league_id),
+        "league_name": league_meta.get("name") or f"League {league_id}",
+        "league_admin_entry": league_meta.get("admin_entry"),
+        "snapshot_gameweek": snapshot_gw,
+        "target_gameweek": target,
+        "average_predicted_xpoints": avg_xp,
+        "standings": enriched,
+        "you": me,
+        "has_next": bool((data.get("standings", {}) or {}).get("has_next")),
+    }
+
+
+@app.get("/league/{league_id}/manager/{manager_id}")
+def league_manager_weaknesses(
+    league_id: int = Path(..., description="FPL classic league id."),
+    manager_id: int = Path(..., description="The rival manager's FPL entry id."),
+    gw: int | None = None,
+    suggestions_per_slot: int = Query(default=3, ge=1, le=8),
+) -> dict:
+    """Drill-down on a rival's squad: show their full XI ranked by xPoints, flag
+    the weakest starters, and suggest higher-xP swaps within the same position
+    (and at a similar/lower price than the rival's player) the user could
+    consider to leapfrog them."""
+    boot = state.client.bootstrap()
+    snapshot_gw = current_gameweek(boot)
+    target = _resolve_gw(gw)
+    team_codes = _team_code_map()
+
+    xi_df = _fetch_manager_xi(int(manager_id), snapshot_gw)
+    if xi_df.empty:
+        raise HTTPException(404, f"Could not fetch manager {manager_id}'s squad.")
+
+    # Try to fetch their entry name for display.
+    try:
+        entry_meta = state.client.manager_entry(int(manager_id))
+        entry_name = entry_meta.get("name") or ""
+        player_name = (
+            f"{entry_meta.get('player_first_name', '')} "
+            f"{entry_meta.get('player_last_name', '')}"
+        ).strip()
+    except Exception:
+        entry_name, player_name = "", ""
+
+    # Captain / vice from picks payload (already on xi_df)
+    cap_row = xi_df[xi_df.get("is_captain") == True]  # noqa: E712
+    vc_row = xi_df[xi_df.get("is_vice_captain") == True]  # noqa: E712
+    captain_id = int(cap_row["player_id"].iloc[0]) if len(cap_row) else 0
+    vice_id = int(vc_row["player_id"].iloc[0]) if len(vc_row) else 0
+
+    starters = xi_df[xi_df["squad_slot"] <= 11].copy().sort_values(
+        "squad_slot"
+    ).reset_index(drop=True)
+    bench = xi_df[xi_df["squad_slot"] > 11].copy().sort_values("squad_slot")
+
+    # Build full prediction pool for the target GW (used to suggest swaps).
+    preds = _predictions_for(target).copy()
+    rival_ids = set(int(p) for p in xi_df["player_id"].tolist())
+
+    def _player_row(p) -> dict:
+        return {
+            "player_id": int(p["player_id"]),
+            "web_name": str(p.get("web_name") or ""),
+            "team_name": str(p.get("team_name") or ""),
+            "team_code": team_codes.get(int(p.get("team") or 0), 0),
+            "position": str(p.get("position") or ""),
+            "price": float(p.get("price") or 0.0),
+            "xPoints": round(float(p.get("xPoints") or 0.0), 2),
+        }
+
+    starters_out = []
+    weakness_list = []
+    starters_sorted = starters.sort_values("xPoints", ascending=True).reset_index(drop=True)
+    weak_threshold = min(3, len(starters_sorted))
+
+    for i, row in starters.iterrows():
+        rec = _player_row(row)
+        rec["squad_slot"] = int(row["squad_slot"])
+        rec["is_captain"] = bool(row.get("is_captain", False))
+        rec["is_vice_captain"] = bool(row.get("is_vice_captain", False))
+        starters_out.append(rec)
+
+    for i in range(weak_threshold):
+        weak = starters_sorted.iloc[i]
+        weak_pos = str(weak.get("position") or "")
+        weak_price = float(weak.get("price") or 0.0)
+        weak_xp = float(weak.get("xPoints") or 0.0)
+        # Suggest same-position players the rival doesn't already own,
+        # priced at most £0.5m above the weak player, and with strictly higher xP.
+        cand = preds[
+            (preds["position"] == weak_pos)
+            & (~preds["player_id"].isin(rival_ids))
+            & (preds["price"] <= weak_price + 0.5)
+            & (preds["xPoints"] > weak_xp)
+        ].sort_values("xPoints", ascending=False).head(suggestions_per_slot)
+        suggestions = [
+            {
+                "player_id": int(c["player_id"]),
+                "web_name": str(c.get("web_name") or ""),
+                "team_name": str(c.get("team_name") or ""),
+                "team_code": team_codes.get(int(c.get("team") or 0), 0),
+                "position": str(c.get("position") or ""),
+                "price": float(c.get("price") or 0.0),
+                "xPoints": round(float(c.get("xPoints") or 0.0), 2),
+                "xp_gain": round(float(c.get("xPoints") or 0.0) - weak_xp, 2),
+            }
+            for _, c in cand.iterrows()
+        ]
+        weakness_list.append({
+            "weak_player": _player_row(weak),
+            "reason": (
+                f"Lowest projected starter — only {weak_xp:.1f} xP for GW{target}."
+            ),
+            "suggested_replacements": suggestions,
+        })
+
+    bench_out = [
+        {**_player_row(r), "squad_slot": int(r["squad_slot"])}
+        for _, r in bench.iterrows()
+    ]
+
+    xi_xp = round(float(starters["xPoints"].sum()), 2)
+    cap_xp = float(cap_row["xPoints"].iloc[0]) if len(cap_row) else 0.0
+    total_with_cap = round(xi_xp + cap_xp, 2)
+
+    return {
+        "league_id": int(league_id),
+        "manager_id": int(manager_id),
+        "entry_name": entry_name,
+        "player_name": player_name,
+        "snapshot_gameweek": snapshot_gw,
+        "target_gameweek": target,
+        "captain_id": captain_id,
+        "vice_captain_id": vice_id,
+        "xi_xpoints": xi_xp,
+        "total_xpoints": total_with_cap,
+        "starting_xi": starters_out,
+        "bench": bench_out,
+        "weaknesses": weakness_list,
+    }
+
 
 # ---------------------------------------------------------------------- #
 # /chat — Liam Rosenior persona chatbot, powered by Gemini 2.0 Flash.
@@ -745,6 +1039,7 @@ Your role here:
 - Be concise — 2-5 short paragraphs max, often less. The user is on a small chat panel, not reading an essay.
 - If asked something completely off-topic (politics, personal life, etc.), gently steer back to football.
 - Never claim to have real-time data you don't have. If asked about live odds or stats, say you're going off general form and tactical read.
+- If a "LIVE CONTEXT" block is provided below the persona instructions, treat it as authoritative real-time data about the user's FPL mini-league (standings, rival squads, predicted xPoints, suggested swaps). Use it to give pointed, competitive advice — exposing weak spots in rivals' XIs, suggesting differentials, recommending captain/transfer plays that beat specific managers in the league.
 
 Always reply in character as Liam Rosenior. Do not break character. Do not mention that you are an AI."""
 
@@ -756,6 +1051,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
+    context: str | None = None  # extra context appended to system prompt (e.g. league standings)
 
 
 @app.post("/chat")
@@ -781,8 +1077,20 @@ def chat(req: ChatRequest) -> dict:
     if not contents:
         raise HTTPException(status_code=400, detail="no non-empty messages")
 
+    system_prompt = ROSENIOR_SYSTEM_PROMPT
+    if req.context and req.context.strip():
+        # Trim very large contexts to keep token usage sane.
+        ctx = req.context.strip()
+        if len(ctx) > 6000:
+            ctx = ctx[:6000] + "\n…(truncated)"
+        system_prompt = (
+            ROSENIOR_SYSTEM_PROMPT
+            + "\n\n---\nLIVE CONTEXT (use this when relevant to the user's question):\n"
+            + ctx
+        )
+
     payload = {
-        "system_instruction": {"parts": [{"text": ROSENIOR_SYSTEM_PROMPT}]},
+        "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": contents,
         "generationConfig": {
             "temperature": 0.85,

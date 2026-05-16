@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Send, X, Loader2 } from "lucide-react";
+import { Send, X, Loader2, Swords } from "lucide-react";
 import { api } from "../api";
 import type { ChatMessage } from "../types";
 
@@ -11,13 +11,39 @@ const WELCOME: ChatMessage = {
     "Hi I am Liam Rosenior. I'm not arrogant. I'm good at what I do. Your FPL players need to make a decision to be around the ball, to respect the ball!",
 };
 
-export function RoseniorChat() {
+export type ChatContext = {
+  /** Short label shown in the header (e.g. "League: The Lads · vs John"). */
+  label: string;
+  /** Full text appended to the system prompt server-side. */
+  text: string;
+};
+
+export function RoseniorChat({
+  context,
+  openSignal,
+  autoPrompt,
+  autoPromptSignal,
+}: {
+  context?: ChatContext | null;
+  /** Increment this number from a parent to programmatically open the chat. */
+  openSignal?: number;
+  /** A user message to auto-send the next time `autoPromptSignal` increments. */
+  autoPrompt?: string | null;
+  autoPromptSignal?: number;
+} = {}) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const lastAutoPromptSignal = useRef<number>(0);
+  // Keep the latest context in a ref so the auto-send effect always reads the
+  // freshest league/rival context without needing it in the dep array.
+  const contextRef = useRef<ChatContext | null | undefined>(context);
+  useEffect(() => {
+    contextRef.current = context;
+  }, [context]);
 
   // Auto-scroll to bottom on new message
   useEffect(() => {
@@ -27,18 +53,22 @@ export function RoseniorChat() {
     });
   }, [messages, loading]);
 
-  async function send() {
-    const text = input.trim();
-    if (!text || loading) return;
-    const next: ChatMessage[] = [...messages, { role: "user", content: text }];
+  // Open programmatically when parent bumps `openSignal`.
+  useEffect(() => {
+    if (openSignal && openSignal > 0) setOpen(true);
+  }, [openSignal]);
+
+  async function sendText(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed || loading) return;
+    const next: ChatMessage[] = [...messages, { role: "user", content: trimmed }];
     setMessages(next);
     setInput("");
     setLoading(true);
     setError(null);
     try {
-      // Send the full conversation (excluding the synthetic welcome) so the model has context.
       const history = next.filter((m) => m !== WELCOME);
-      const { reply } = await api.chat(history);
+      const { reply } = await api.chat(history, contextRef.current?.text);
       setMessages((m) => [...m, { role: "assistant", content: reply }]);
     } catch (e) {
       setError(String(e));
@@ -46,6 +76,28 @@ export function RoseniorChat() {
       setLoading(false);
     }
   }
+
+  async function send() {
+    await sendText(input);
+  }
+
+  // Auto-send when `autoPromptSignal` increments (e.g. user clicks "Ask Liam").
+  useEffect(() => {
+    if (
+      autoPromptSignal &&
+      autoPromptSignal > lastAutoPromptSignal.current &&
+      autoPrompt &&
+      autoPrompt.trim()
+    ) {
+      lastAutoPromptSignal.current = autoPromptSignal;
+      setOpen(true);
+      // Defer one tick so the panel renders before the request fires.
+      setTimeout(() => {
+        void sendText(autoPrompt);
+      }, 50);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPromptSignal]);
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -96,6 +148,12 @@ export function RoseniorChat() {
                 <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-accent" />
                 Online · talking tactics and respecting the ball
               </p>
+              {context?.label && (
+                <p className="mt-0.5 flex items-center gap-1 text-[10px] text-accent2">
+                  <Swords className="h-3 w-3" />
+                  <span className="truncate">{context.label}</span>
+                </p>
+              )}
             </div>
             <button
               onClick={() => setOpen(false)}
