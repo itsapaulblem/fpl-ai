@@ -87,6 +87,17 @@ class FPLClient:
         Returns `{elements: [{id, stats: {total_points, minutes, ...}}]}`."""
         return self._get(f"event/{int(gw)}/live/")
 
+    def classic_league_standings(self, league_id: int, page_standings: int = 1) -> dict:
+        """Standings for a public/private classic league.
+
+        Returns `{league: {...}, standings: {results: [{entry, entry_name,
+        player_name, rank, total, ...}], has_next, page}, new_entries: {...}}`.
+        """
+        return self._get(
+            f"leagues-classic/{int(league_id)}/standings/"
+            f"?page_standings={int(page_standings)}"
+        )
+
 
 # Module-level helpers (don't need an instance)
 def current_gameweek(bootstrap: dict) -> int:

@@ -1,4 +1,4 @@
-# FPL AI
+# Paul FPL AI
 
 An end-to-end machine-learning + optimisation system that recommends an optimal
 Fantasy Premier League squad each gameweek.

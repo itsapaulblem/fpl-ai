@@ -3,9 +3,12 @@ import type {
   ChatResponse,
   GameweekInfo,
   Health,
+  LeagueResponse,
   LiveScoresResponse,
+  ManagerLeaguesResponse,
   MyTeamResponse,
   PredictionsResponse,
+  RivalManagerResponse,
   SquadResponse,
   TransfersResponse,
 } from "./types";
@@ -59,6 +62,19 @@ export const api = {
       `/transfers?tid=${tid}&bank=${bank}&free=${free}` +
         `&max_transfers=${maxTransfers}&top=${top}${gw ? `&gw=${gw}` : ""}`,
     ),
-  chat: (messages: ChatMessage[]) =>
-    post<ChatResponse>("/chat", { messages }),
+  chat: (messages: ChatMessage[], context?: string) =>
+    post<ChatResponse>("/chat", context ? { messages, context } : { messages }),
+  managerLeagues: (tid: number) =>
+    get<ManagerLeaguesResponse>(`/manager/${tid}/leagues`),
+  league: (leagueId: number, tid?: number, gw?: number, enrichTop = 20) => {
+    const qs = new URLSearchParams();
+    if (tid != null) qs.set("tid", String(tid));
+    if (gw != null) qs.set("gw", String(gw));
+    qs.set("enrich_top", String(enrichTop));
+    return get<LeagueResponse>(`/league/${leagueId}?${qs.toString()}`);
+  },
+  leagueManager: (leagueId: number, managerId: number, gw?: number) =>
+    get<RivalManagerResponse>(
+      `/league/${leagueId}/manager/${managerId}${gw ? `?gw=${gw}` : ""}`,
+    ),
 };

@@ -11,6 +11,8 @@ import {
   Clock,
   ChevronLeft,
   ChevronRight,
+  Users,
+  LayoutDashboard,
 } from "lucide-react";
 
 import { api } from "./api";
@@ -45,14 +47,23 @@ function SoccerBallIcon({ className }: { className?: string }) {
 import { Pitch } from "./components/Pitch";
 import { PredictionsTable } from "./components/PredictionsTable";
 import { TransferPlanCard } from "./components/TransferPlanCard";
-import { RoseniorChat } from "./components/RoseniorChat";
+import { RoseniorChat, type ChatContext } from "./components/RoseniorChat";
+import { LeagueTab } from "./components/LeagueTab";
 
 const DEFAULT_TEAM_ID = 271610;
+
+type Tab = "dashboard" | "league";
 
 export default function App() {
   // Team id input — type freely, applies on submit.
   const [teamIdInput, setTeamIdInput] = useState(String(DEFAULT_TEAM_ID));
   const [teamId, setTeamId] = useState<number>(DEFAULT_TEAM_ID);
+
+  const [activeTab, setActiveTab] = useState<Tab>("dashboard");
+  const [chatContext, setChatContext] = useState<ChatContext | null>(null);
+  const [chatOpenSignal, setChatOpenSignal] = useState(0);
+  const [chatAutoPrompt, setChatAutoPrompt] = useState<string | null>(null);
+  const [chatAutoPromptSignal, setChatAutoPromptSignal] = useState(0);
 
   const [gw, setGw] = useState<GameweekInfo | null>(null);
   const [scores, setScores] = useState<LiveScoresResponse | null>(null);
@@ -189,7 +200,14 @@ export default function App() {
         activeId={teamId}
       />
 
-      <RoseniorChat />
+      <RoseniorChat
+        context={chatContext}
+        openSignal={chatOpenSignal}
+        autoPrompt={chatAutoPrompt}
+        autoPromptSignal={chatAutoPromptSignal}
+      />
+
+      <TabBar activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {error && (
         <div className="mb-4 flex items-start gap-2 rounded-xl bg-danger/10 p-3 ring-1 ring-danger/30">
@@ -200,7 +218,22 @@ export default function App() {
         </div>
       )}
 
+      {activeTab === "league" && (
+        <LeagueTab
+          myTeamId={teamId}
+          onAskLiam={(ctx, prompt) => {
+            setChatContext(ctx);
+            setChatOpenSignal((n) => n + 1);
+            if (prompt) {
+              setChatAutoPrompt(prompt);
+              setChatAutoPromptSignal((n) => n + 1);
+            }
+          }}
+        />
+      )}
+
       {/* Live scores */}
+      {activeTab === "dashboard" && (<>
       <section>
         <Card>
           <CardHeader
@@ -505,11 +538,47 @@ export default function App() {
           <IdealSquadsBanner team={team} />
         </section>
       )}
+      </>)}
 
       <footer className="mt-12 pb-6 text-center text-xs text-muted">
         Made by Paul Cheng · Data courtesy of the official Fantasy Premier League API
       </footer>
     </div>
+  );
+}
+
+function TabBar({
+  activeTab,
+  setActiveTab,
+}: {
+  activeTab: Tab;
+  setActiveTab: (t: Tab) => void;
+}) {
+  const tabs: Array<{ id: Tab; label: string; icon: typeof LayoutDashboard }> = [
+    { id: "dashboard", label: "My Dashboard", icon: LayoutDashboard },
+    { id: "league", label: "Mini-Leagues", icon: Users },
+  ];
+  return (
+    <nav className="mb-5 flex gap-1 rounded-xl bg-panel2 p-1 ring-1 ring-border">
+      {tabs.map((t) => {
+        const active = activeTab === t.id;
+        const Icon = t.icon;
+        return (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+              active
+                ? "bg-accent text-bg shadow-md shadow-accent/20"
+                : "text-muted hover:bg-bg/30 hover:text-text"
+            }`}
+          >
+            <Icon className="h-4 w-4" />
+            {t.label}
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 
